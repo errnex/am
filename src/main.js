@@ -24,8 +24,8 @@ const QUALITY = resolveQuality();
 const LOWQ = QUALITY === 'low';
 
 // ---------- Renderer / Scene ----------
-const renderer = new THREE.WebGLRenderer({ antialias: !LOWQ, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, LOWQ ? 1 : 2));
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 app.appendChild(renderer.domElement);
 
@@ -465,12 +465,12 @@ const COLORS = [0xff5252, 0x42a5f5, 0x66bb6a, 0xffca28, 0xab47bc, 0x26a69a, 0xff
 function drawCodeLabel(cv, code) {
   const g = cv.getContext('2d');
   g.clearRect(0, 0, cv.width, cv.height);
-  g.fillStyle = 'rgba(0,0,0,0.55)'; g.beginPath(); g.roundRect(28, 8, 200, 80, 18); g.fill();
-  g.font = '900 52px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillStyle = '#ffd93b'; g.fillText(code, 128, 50);
+  g.fillStyle = 'rgba(0,0,0,0.55)'; g.beginPath(); g.roundRect(56, 16, 400, 160, 36); g.fill();
+  g.font = '900 104px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = '#ffd93b'; g.fillText(code, 256, 100);
 }
 function codeSprite(code, color) {
-  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 96;
+  const cv = document.createElement('canvas'); cv.width = 512; cv.height = 192;
   drawCodeLabel(cv, code);
   const tex = new THREE.CanvasTexture(cv);
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: true, transparent: true }));
@@ -726,7 +726,7 @@ app.insertAdjacentHTML('beforeend', `
       <details><summary>Announcements</summary><p>Kill streaks earn on-screen announcements: FIRST BLOOD, GOOD GAME, DOUBLE KILL, TRIPLE KILL, RAMPAGE, UNSTOPPABLE, LEGENDARY, plus REVENGE and LONG SHOT. 3+ streak sets you ON FIRE (bragging rights only!). After you die you can spectate with a free drone camera.</p></details>
       <details><summary>PC controls</summary><p>Click the screen to lock the mouse &bull; WASD to move &bull; SHIFT to sprint &bull; SPACE to jump &bull; type 0-9</p></details>
       <details><summary>Mobile controls</summary><p>Phones must be in <b>LANDSCAPE</b> mode — portrait shows a rotate prompt and pauses the game. Left joystick to move &bull; drag the right side of the screen to look &bull; JUMP button &bull; number keypad. Tap the minimap to collapse/expand it.</p></details>
-      <details><summary>Graphics quality</summary><p>Current: <b id="q-cur">…</b><br><span id="q-btns"><button data-q="auto">AUTO</button><button data-q="low">LOW</button><button data-q="high">HIGH</button></span><br>Auto = LOW on phones, HIGH on desktop. Changing quality reloads the menu (not during a match). LOW caps resolution, disables antialiasing, and uses emissive-only night lamps.</p></details>
+      <details><summary>Graphics quality</summary><p>Current: <b id="q-cur">…</b><br><span id="q-btns"><button data-q="auto">AUTO</button><button data-q="low">LOW</button><button data-q="high">HIGH</button></span><br>Auto = LOW on phones, HIGH on desktop. Changing quality reloads the menu (not during a match). LOW keeps full HD resolution and antialiasing, but uses emissive-only night lamps and fewer particles.</p></details>
     </div>
     <button class="btn small back-btn" data-back="scr-main">&larr; BACK</button>
   </div>
