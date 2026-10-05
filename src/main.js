@@ -10,8 +10,8 @@ const CHAR_AIM_Y = 1.02;
 const app = document.getElementById('app');
 const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 
-// ---------- Graphics quality (auto: LOW on touch, HIGH on desktop; override in INFO) ----------
-// Changing quality needs a reload (renderer is created once) — the INFO screen handles that.
+// ---------- Graphics quality (auto: LOW on touch, HIGH on desktop; chosen in SELECT GRAPHICS screen pre-match) ----------
+// LOWQ is re-resolved at every startMatch so the pre-match choice applies without a page reload.
 const QUALITY_KEY = 'nr_quality'; // 'auto' | 'low' | 'high'
 function resolveQuality() {
   let q = 'auto';
@@ -20,8 +20,7 @@ function resolveQuality() {
   if (q === 'high') return 'high';
   return isTouch ? 'low' : 'high';
 }
-const QUALITY = resolveQuality();
-const LOWQ = QUALITY === 'low';
+let LOWQ = resolveQuality() === 'low';
 
 // ---------- Renderer / Scene ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -42,9 +41,15 @@ scene.add(sun);
 
 // ---------- Audio (WebAudio beeps) ----------
 let AC = null;
+const SOUND_KEY = 'nr_sound'; // 'on' | 'off'
+function soundOn() {
+  try { return (localStorage.getItem(SOUND_KEY) || 'on') === 'on'; } catch (e) { return true; }
+}
 function beep(freq = 660, dur = 0.07, type = 'square', vol = 0.12) {
+  if (!soundOn()) return;
   try {
     AC = AC || new (window.AudioContext || window.webkitAudioContext)();
+    if (AC.state === 'suspended') AC.resume();
     const o = AC.createOscillator(), g = AC.createGain();
     o.type = type; o.frequency.value = freq;
     g.gain.setValueAtTime(vol, AC.currentTime);
@@ -52,6 +57,49 @@ function beep(freq = 660, dur = 0.07, type = 'square', vol = 0.12) {
     o.connect(g).connect(AC.destination); o.start(); o.stop(AC.currentTime + dur);
   } catch (e) { /* audio optional */ }
 }
+// Announcer voice for the PLAYER's kill announcements (speechSynthesis, no assets)
+function speak(text) {
+  if (!soundOn()) return;
+  try {
+    const ss = window.speechSynthesis;
+    if (!ss) return;
+    ss.cancel(); // never queue up announcements
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'en-US'; u.pitch = 0.85; u.rate = 0.95; u.volume = 1;
+    const vs = ss.getVoices();
+    const en = vs.find(v => v.lang && v.lang.toLowerCase().startsWith('en'));
+    if (en) u.voice = en;
+    ss.speak(u);
+  } catch (e) { /* voice optional */ }
+}
+// Cartoonish resigned "aaaakkhhh" groan when the PLAYER dies (WebAudio, no assets)
+function deathScream() {
+  if (!soundOn()) return;
+  try {
+    AC = AC || new (window.AudioContext || window.webkitAudioContext)();
+    if (AC.state === 'suspended') AC.resume();
+    const t = AC.currentTime, dur = 0.9;
+    const o = AC.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(420, t);
+    o.frequency.exponentialRampToValueAtTime(115, t + dur); // pitch slides down, resigned
+    const lfo = AC.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 28; // wobbly "khhh"
+    const lfoG = AC.createGain(); lfoG.gain.value = 22;
+    lfo.connect(lfoG).connect(o.frequency);
+    const f = AC.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900; f.Q.value = 2;
+    const g = AC.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.32, t + 0.12);
+    g.gain.setValueAtTime(0.32, t + dur - 0.25);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(f).connect(g).connect(AC.destination);
+    o.start(t); lfo.start(t); o.stop(t + dur); lfo.stop(t + dur);
+  } catch (e) { /* audio optional */ }
+}
+// resume audio on first user gesture (browsers block audio before interaction)
+window.addEventListener('pointerdown', function unlockAudio() {
+  try { if (AC && AC.state === 'suspended') AC.resume(); } catch (e) {}
+  window.removeEventListener('pointerdown', unlockAudio);
+});
 
 // ---------- Colliders (3D AABB: y0..y1 vertical span) ----------
 const colliders = []; // {minX,maxX,minZ,maxZ,y0,y1}
@@ -704,6 +752,13 @@ app.insertAdjacentHTML('beforeend', `
     <button class="btn diff-btn" data-diff="hard">&#x1F608; HARD<br><small>Fast, ruthless bots</small></button>
     <button class="btn small back-btn" data-back="scr-map">&larr; BACK</button>
   </div>
+  <div class="mscreen hidden" id="scr-gfx">
+    <div class="diff-title">SELECT GRAPHICS</div>
+    <button class="btn diff-btn sel" data-q="auto">&#x2699;&#xFE0F; AUTO<br><small>LOW on phones, HIGH on desktop &mdash; recommended</small></button>
+    <button class="btn diff-btn" data-q="low">&#x1F4F1; LOW<br><small>Smoother on older phones</small></button>
+    <button class="btn diff-btn" data-q="high">&#x1F5A5;&#xFE0F; HIGH<br><small>Full effects on desktop</small></button>
+    <button class="btn small back-btn" data-back="scr-diff">&larr; BACK</button>
+  </div>
   <div class="mscreen hidden" id="scr-coming">
     <div class="diff-title">PLAY WITH REAL PLAYERS</div>
     <div class="coming">&#x1F310; Coming soon &mdash; X login required</div>
@@ -723,10 +778,11 @@ app.insertAdjacentHTML('beforeend', `
       <details><summary>Items</summary><p>&#x2764;&#xFE0F; LOVE blocks one kill &bull; &#x1F500; DECOY randomizes your code &bull; &#x1F4A5; CONFUSE scrambles the nearest enemy's code &mdash; but beware &#x1F3AD; MIMIC traps that look like real items and scramble YOUR code! Supply drops fall every 15 seconds &mdash; fight over them.</p></details>
       <details><summary>Kill rewards</summary><p>Your total kills across all matches unlock accessories for YOUR character: &#x1F45F; SHOES (10), &#x1F3A9; HAT (15), &#x1F455; SHIRT (25), &#x1F9E5; JACKET (35), &#x1F451; GOLDEN CROWN (50), &#x1F9B8; WINGS (75), &#x1F308; RAINBOW TRAIL (100), &#x1F9B8;&#x200D;&#x2642;&#xFE0F; CAPE (150). They equip automatically; toggle them in CHARACTER.</p></details>
       <details><summary>Minimap</summary><p>Top-left corner shows you, the zone, items, drop beacons &mdash; and enemies, but ONLY ones you can actually see (no wallhack!).</p></details>
-      <details><summary>Announcements</summary><p>Kill streaks earn on-screen announcements: FIRST BLOOD, GOOD GAME, DOUBLE KILL, TRIPLE KILL, RAMPAGE, UNSTOPPABLE, LEGENDARY, plus REVENGE and LONG SHOT. 3+ streak sets you ON FIRE (bragging rights only!). After you die you can spectate with a free drone camera.</p></details>
-      <details><summary>PC controls</summary><p>Click the screen to lock the mouse &bull; WASD to move &bull; SHIFT to sprint &bull; SPACE to jump &bull; type 0-9</p></details>
+      <details><summary>Announcements</summary><p>Kill streaks earn on-screen announcements WITH an announcer voice: FIRST BLOOD, GOOD GAME, DOUBLE KILL, TRIPLE KILL, RAMPAGE, UNSTOPPABLE, LEGENDARY, plus REVENGE and LONG SHOT. 3+ streak sets you ON FIRE (bragging rights only!). Dying plays a dramatic "aaaakkhhh" groan. Toggle all sound in INFO &rarr; Sound.</p></details>
+      <details><summary>PC controls</summary><p>Click the screen to lock the mouse &bull; move the mouse to look (WASD moves relative to the camera, like an FPS) &bull; SHIFT to sprint &bull; SPACE to jump &bull; type 0-9</p></details>
       <details><summary>Mobile controls</summary><p>Phones must be in <b>LANDSCAPE</b> mode — portrait shows a rotate prompt and pauses the game. Left joystick to move &bull; drag the right side of the screen to look &bull; JUMP button &bull; number keypad. Tap the minimap to collapse/expand it.</p></details>
-      <details><summary>Graphics quality</summary><p>Current: <b id="q-cur">…</b><br><span id="q-btns"><button data-q="auto">AUTO</button><button data-q="low">LOW</button><button data-q="high">HIGH</button></span><br>Auto = LOW on phones, HIGH on desktop. Changing quality reloads the menu (not during a match). LOW keeps full HD resolution and antialiasing, but uses emissive-only night lamps and fewer particles.</p></details>
+      <details><summary>Sound</summary><p><button id="snd-btn" class="btn small">&#x1F50A; SOUND: ON</button><br>Announcer voice, death groan and menu beeps. Saved in this browser.</p></details>
+      <details><summary>Mouse sensitivity</summary><p><input type="range" id="sens" min="0.5" max="2" step="0.1" style="width:180px;vertical-align:middle"> <b id="sens-val">…</b><br>Higher = faster camera look. Applies instantly and is saved in this browser.</p></details>
     </div>
     <button class="btn small back-btn" data-back="scr-main">&larr; BACK</button>
   </div>
@@ -810,21 +866,49 @@ $('acc-toggle').addEventListener('change', (e) => {
   beep(820, 0.08);
 });
 
-// graphics quality override (INFO screen; reloads the menu to rebuild the renderer)
-function renderQuality() {
-  const cur = $('q-cur'); if (!cur) return;
+// graphics choice (SELECT GRAPHICS screen, pre-match; applies to the next match, no reload needed)
+function renderGfxSel() {
   let q = 'auto';
   try { q = localStorage.getItem(QUALITY_KEY) || 'auto'; } catch (e) {}
-  cur.textContent = q.toUpperCase() + ' (running ' + QUALITY.toUpperCase() + ')';
+  document.querySelectorAll('#scr-gfx .diff-btn').forEach((b) => b.classList.toggle('sel', b.dataset.q === q));
 }
-document.querySelectorAll('#q-btns button').forEach((b) => {
+document.querySelectorAll('#scr-gfx .diff-btn').forEach((b) => {
   b.addEventListener('click', () => {
     try { localStorage.setItem(QUALITY_KEY, b.dataset.q); } catch (e) {}
+    renderGfxSel();
     beep(820, 0.08);
-    location.reload();
+    if (menuFlow === 'real') { showScreen('scr-coming'); return; }
+    startMatch(pendingDiff);
   });
 });
-renderQuality();
+renderGfxSel();
+
+// master sound toggle (INFO screen; persists; gates beeps, announcer voice, death groan)
+function renderSndBtn() {
+  const b = $('snd-btn'); if (!b) return;
+  b.innerHTML = soundOn() ? '&#x1F50A; SOUND: ON' : '&#x1F507; SOUND: OFF';
+}
+document.addEventListener('click', (e) => {
+  if (e.target && e.target.id === 'snd-btn') {
+    try { localStorage.setItem(SOUND_KEY, soundOn() ? 'off' : 'on'); } catch (err) {}
+    renderSndBtn();
+    beep(820, 0.08);
+  }
+});
+renderSndBtn();
+
+// mouse sensitivity slider (INFO screen; applies instantly, persisted)
+(function initSens() {
+  const r = $('sens'), v = $('sens-val');
+  if (!r || !v) return;
+  r.value = sensMul.toFixed(1);
+  v.textContent = sensMul.toFixed(1) + 'x';
+  r.addEventListener('input', () => {
+    sensMul = Math.min(2, Math.max(0.5, parseFloat(r.value) || 1));
+    v.textContent = sensMul.toFixed(1) + 'x';
+    try { localStorage.setItem(SENS_KEY, sensMul.toFixed(1)); } catch (e) {}
+  });
+})();
 
 // ---------- Drop items (LOVE shield + DECOY + CONFUSE) ----------
 const items = []; // {type:'love'|'decoy'|'confuse', pos, grp, icon, phase}
@@ -1068,6 +1152,7 @@ const G = {
   dropT: 0,
   specPlace: 0, drone: null, // drone: {x, z, h, follow} — free spectate camera
 };
+window.__NR = { G, get items() { return items; } }; // trailer capture debug hook (removed before ship)
 const ZONE_PHASES = [ // [waitSec, shrinkToRadius] — tuned for 50-player matches
   [16, 110], [14, 75], [12, 50], [10, 30], [9, 16], [8, 7], [7, 2],
 ];
@@ -1112,6 +1197,7 @@ function freeSpot(taken = []) {
 const PLAYER_COUNT = 50;
 function startMatch(diffKey) {
   if (diffKey && DIFFS[diffKey]) { G.diff = diffKey; G.diffCfg = DIFFS[diffKey]; }
+  LOWQ = resolveQuality() === 'low'; // apply the SELECT GRAPHICS choice to this match
   const cfg = G.diffCfg;
   // clear old
   for (const p of G.players) scene.remove(p.grp);
@@ -1149,7 +1235,6 @@ function startMatch(diffKey) {
       // bot fields (scaled by difficulty)
       target: null, best: null, bestD: 1e9, scanT: Math.random() * 0.3,
       route: [], home: null, homeWp: null, seenTargetAt: -9, typeProgress: 0, typeTimer: 0,
-      moveHeading: null, inputSector: null,
       reaction: cfg.react[0] + Math.random() * (cfg.react[1] - cfg.react[0]),
       digitTime: cfg.digit[0] + Math.random() * (cfg.digit[1] - cfg.digit[0]),
       speedMul: cfg.speedMul * (0.92 + Math.random() * 0.16),
@@ -1161,7 +1246,7 @@ function startMatch(diffKey) {
   // initial item drops (love + decoy mix)
   for (let i = 0; i < 3; i++) spawnItem();
   applyAccessories(G.player); // equip earned kill-reward accessories
-  yaw = G.player.yaw - Math.PI; pitch = 0; camSnap = true;
+  yaw = G.player.yaw - Math.PI; pitch = 0; yawT = yaw; pitchT = pitch; camSnap = true;
   $('mycode-val').textContent = G.player.code;
   $('diffname').textContent = cfg.label + ' • ' + (G.mapMode === 'night' ? '🌙' : '☀️');
   applyMapMode();
@@ -1201,7 +1286,13 @@ function lockPointer() {
 
 // ---------- Input ----------
 const keys = {};
-let yaw = 0, pitch = 0, locked = false;
+let yaw = 0, pitch = 0, yawT = 0, pitchT = 0, locked = false;
+// FPS-style mouse look: mouse/touch write yawT/pitchT targets, the camera
+// eases toward them every frame (dt-correct, no jitter). The mouse has full
+// authority over the camera — no auto-follow fighting it.
+const SENS_KEY = 'nr_sens';
+let sensMul = Math.min(2, Math.max(0.5, parseFloat(localStorage.getItem(SENS_KEY)) || 1));
+const PITCH_MIN = -1.2, PITCH_MAX = 1.35;
 addEventListener('keydown', (e) => {
   keys[e.code] = true;
   if (G.mode === 'play' && /^[0-9]$/.test(e.key)) inputDigit(e.key);
@@ -1224,8 +1315,11 @@ renderer.domElement.addEventListener('click', () => {
 $('locktip').addEventListener('click', lockPointer);
 addEventListener('mousemove', (e) => {
   if (!locked || G.mode !== 'play') return;
-  yaw -= e.movementX * 0.0023; pitch -= e.movementY * 0.0023;
-  pitch = Math.max(-1.45, Math.min(1.45, pitch));
+  // clamp spikes (browsers can emit a jump when pointer lock engages/disengages)
+  const mx = Math.max(-250, Math.min(250, e.movementX || 0));
+  const my = Math.max(-250, Math.min(250, e.movementY || 0));
+  yawT -= mx * 0.0022 * sensMul; pitchT -= my * 0.0022 * sensMul;
+  pitchT = Math.max(PITCH_MIN, Math.min(PITCH_MAX, pitchT));
 });
 // drone camera zoom (spectate mode only)
 addEventListener('wheel', (e) => {
@@ -1257,8 +1351,8 @@ addEventListener('touchmove', (e) => {
   if (G.mode === 'spectate') { specTouchMove(e); return; }
   for (const t of e.changedTouches) {
     if (lookTouch && t.identifier === lookTouch.id) {
-      yaw -= (t.clientX - lookTouch.x) * 0.005; pitch -= (t.clientY - lookTouch.y) * 0.005;
-      pitch = Math.max(-1.45, Math.min(1.45, pitch));
+      yawT -= (t.clientX - lookTouch.x) * 0.005; pitchT -= (t.clientY - lookTouch.y) * 0.005;
+      pitchT = Math.max(PITCH_MIN, Math.min(PITCH_MAX, pitchT));
       lookTouch.x = t.clientX; lookTouch.y = t.clientY;
     }
     if (joyTouch && t.identifier === joyTouch.id) joyHandle(t);
@@ -1359,9 +1453,10 @@ function banner(txt) {
 }
 // ---------- Kill announcements: big celebratory center-screen banners, queued (max 2) ----------
 const annQ = []; let annActive = false;
-function announce(txt, cls) {
+function announce(txt, cls, voice) {
   if (annQ.length >= 2) annQ.shift(); // never stack-block the view
   annQ.push({ txt, cls });
+  if (voice) speak(voice); // announcer voice for the player's moments
   if (!annActive) dequeueAnnounce();
 }
 function dequeueAnnounce() {
@@ -1397,7 +1492,7 @@ function eliminate(victim, killer, how, killDist = 0) {
     // FIRST BLOOD: the very first code kill of the whole match
     if (!G.firstBlood) {
       G.firstBlood = true;
-      if (killer.isPlayer) announce('🩸 FIRST BLOOD!', 'firstblood');
+      if (killer.isPlayer) announce('🩸 FIRST BLOOD!', 'firstblood', 'First Blood!');
       else feed(`🩸 <b>FIRST BLOOD</b> — ${killer.code}`);
     }
     if (killer.streak >= 3 && !killer.grp.userData.fireSprite) {
@@ -1419,9 +1514,10 @@ function eliminate(victim, killer, how, killDist = 0) {
       if (fresh.length) applyAccessories(G.player);
       renderRewards();
       const tier = Math.min(killer.streak, 6);
-      announce(['', 'GOOD GAME!!!', 'DOUBLE KILL!!', 'TRIPLE KILL!!!', 'RAMPAGE!!!!', 'UNSTOPPABLE!!!!!', 'LEGENDARY!!!!!!'][tier], 't' + tier);
-      if (G.player.lastKiller === victim) { announce('😤 REVENGE!', 'revenge'); G.player.lastKiller = null; }
-      if (killDist > 40) announce('🎯 LONG SHOT! ' + Math.round(killDist) + 'm', 'longshot');
+      const tierVoice = ['', 'Good game!', 'Double kill!', 'Triple kill!', 'Rampage!', 'Unstoppable!', 'Legendary!'][tier];
+      announce(['', 'GOOD GAME!!!', 'DOUBLE KILL!!', 'TRIPLE KILL!!!', 'RAMPAGE!!!!', 'UNSTOPPABLE!!!!!', 'LEGENDARY!!!!!!'][tier], 't' + tier, tierVoice);
+      if (G.player.lastKiller === victim) { announce('😤 REVENGE!', 'revenge', 'Revenge!'); G.player.lastKiller = null; }
+      if (killDist > 40) announce('🎯 LONG SHOT! ' + Math.round(killDist) + 'm', 'longshot', 'Long shot!');
     }
   }
   feed(`<b>${killer ? killer.code : 'ZONE'}</b> ▸ ${victim.code}${victim.isPlayer ? ' (YOU)' : ''}`);
@@ -1430,7 +1526,7 @@ function eliminate(victim, killer, how, killDist = 0) {
   const alive = G.players.filter(p => p.alive);
   // SUDDEN DEATH at 5 or fewer alive
   if (alive.length <= 5 && alive.length > 1) triggerSuddenDeath();
-  if (victim.isPlayer) { enterSpectate(killer); return; }
+  if (victim.isPlayer) { deathScream(); enterSpectate(killer); return; }
   if (alive.length === 1 && alive[0].isPlayer) { endMatch(true); return; }
   if (alive.length <= 1) { endMatch(G.player.alive); }
 }
@@ -1629,6 +1725,10 @@ const _fwd = new THREE.Vector3(), _tgt = new THREE.Vector3(), _des = new THREE.V
 let camSnap = true;
 function updateCamera(dt) {
   const p = G.player; if (!p) return;
+  // smooth look: ease actual yaw/pitch toward the mouse/touch targets
+  const sk = 1 - Math.exp(-22 * dt);
+  yaw += angleDelta(yaw, yawT) * sk;
+  pitch += (pitchT - pitch) * sk;
   _fwd.set(-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch));
   _tgt.copy(p.pos); _tgt.y += 1.18;
   _tgt.x += Math.cos(yaw) * 0.4; _tgt.z += -Math.sin(yaw) * 0.4; // slight shoulder offset
@@ -1656,25 +1756,15 @@ function updatePlayer(dt) {
   const len = Math.hypot(mx, mz);
   let moving = false;
   if (len > 0.05) {
-    // Lock the world heading for an unchanged input direction. This stops the
-    // follow camera from bending a held A/D press into a continuous circle.
-    const inputAngle = Math.atan2(mx, mz);
-    const inputSector = Math.round(inputAngle / (Math.PI / 4));
-    if (p.inputSector !== inputSector || p.moveHeading === null) {
-      p.moveHeading = inputAngle + yaw;
-      p.inputSector = inputSector;
-    }
-    const moveYaw = p.moveHeading;
+    // WASD moves relative to the CAMERA direction. The mouse owns the camera
+    // fully (no auto-follow), so a held key can never bend into a circle.
+    const moveYaw = Math.atan2(mx, mz) + yaw;
     const strength = Math.min(1, len);
     p.pos.x += Math.sin(moveYaw) * speed * strength * dt;
     p.pos.z += Math.cos(moveYaw) * speed * strength * dt;
     moving = true;
-    // Character faces the actual travel direction, then the camera eases in behind it.
+    // Character model rotates to face its actual travel direction.
     p.yaw = turnToward(p.yaw, moveYaw, dt, 11);
-    yaw = turnToward(yaw, moveYaw + Math.PI, dt, 3.1);
-  } else {
-    p.moveHeading = null;
-    p.inputSector = null;
   }
   collide(p.pos);
   if (keys['Space']) doJump(p);
@@ -2159,12 +2249,14 @@ document.querySelectorAll('#scr-map .diff-btn').forEach((b) => {
     showScreen('scr-diff');
   });
 });
+let pendingDiff = 'medium';
 document.querySelectorAll('#scr-diff .diff-btn').forEach((b) => {
   b.addEventListener('click', () => {
     document.querySelectorAll('#scr-diff .diff-btn').forEach((x) => x.classList.toggle('sel', x === b));
     beep(820, 0.08);
-    if (menuFlow === 'real') { showScreen('scr-coming'); return; }
-    startMatch(b.dataset.diff);
+    pendingDiff = b.dataset.diff;
+    renderGfxSel();
+    showScreen('scr-gfx');
   });
 });
 renderBuffer();

@@ -6,8 +6,8 @@ A browser FPS number battle royale (desktop + mobile). No weapons and no skills:
 
 ## Menu
 Compact hub: the main screen shows only **NUMBER ROYALE** plus 4 buttons — PLAY WITH BOTS, PLAY WITH REAL PLAYERS, CHARACTER, INFO. Everything fits at 100% zoom, no scrolling needed.
-- **PLAY WITH BOTS** → SELECT MAP (☀️ DAY / 🌙 NIGHT) → SELECT DIFFICULTY (EASY / MEDIUM / HARD) → match starts.
-- **PLAY WITH REAL PLAYERS** → same map + difficulty flow, then a "Coming soon — X login required" notice (phase 2, not faked).
+- **PLAY WITH BOTS** → SELECT MAP (☀️ DAY / 🌙 NIGHT) → SELECT DIFFICULTY (EASY / MEDIUM / HARD) → SELECT GRAPHICS (AUTO / LOW / HIGH) → match starts.
+- **PLAY WITH REAL PLAYERS** → same map + difficulty + graphics flow, then a "Coming soon — X login required" notice (phase 2, not faked).
 - **CHARACTER** → your skin picker (Rookie/Gold/Flame/Rainbow) and the KILL REWARDS panel (8 accessories, lock states, next-reward progress, on/off toggle).
 - **INFO** → collapsible sections: how to play, map, items, kill rewards, minimap, announcements, PC & mobile controls.
 Every sub-screen has a ← BACK button. Each screen shows only its own options.
@@ -15,7 +15,7 @@ Every sub-screen has a ← BACK button. Each screen shows only its own options.
 ## How to play
 
 - **Third-person view:** your own smaller blocky character is visible, identified by a white ring at its feet (no floating code label above your head — your code is always shown in the top HUD). WASD/joystick movement turns the character to face the direction it is actually running, while the camera smoothly settles behind it. The camera pulls in when a wall or container blocks it.
-- **PC:** click the screen to lock the mouse • `WASD` to move (relative to camera) • `SHIFT` to sprint • `SPACE` to jump • type `0-9` to enter codes • `Backspace` to delete • after death: drone cam — `WASD`/arrows to pan, mouse wheel to zoom
+- **PC:** click the screen to lock the mouse • move the **mouse to look** (FPS-style: smoothed, pitch-clamped, pointer-lock; WASD moves relative to the camera) • `SHIFT` to sprint • `SPACE` to jump • type `0-9` to enter codes • `Backspace` to delete • mouse sensitivity slider in INFO • after death: drone cam — `WASD`/arrows to pan, mouse wheel to zoom
 - **Mobile:** phones must be in **LANDSCAPE** — portrait shows a rotate prompt and pauses the match • left joystick to move • drag the right side of the screen to rotate the camera • `JUMP` button • on-screen number keypad • tap the minimap to collapse/expand it (smaller on phones)
 
 ## Difficulty (Play with Bots)
@@ -105,7 +105,7 @@ A wrecked airplane in the south-east quadrant: broken two-piece fuselage (nose b
 - Kill feed, alive counter, elimination banner, crosshair hit marker, WebAudio sound effects
 - Shrinking safe zone (battle royale pressure) + sudden death endgame
 - Lightweight performance: Lambert materials, no heavy shadows, capped pixel ratio, staggered bot perception — mobile friendly
-- **Auto graphics quality:** phones default to LOW (pixel ratio capped at 1, no antialiasing, emissive-only night lamps with 2 real point lights, no plane smoke, fewer trail particles, slightly closer fog); desktop runs HIGH. Override anytime in **INFO → Graphics quality** (AUTO / LOW / HIGH) — changing it reloads the menu.
+- **Auto graphics quality:** phones default to LOW, desktop to HIGH — chosen on the SELECT GRAPHICS screen right after difficulty (both bot and real-player flows). The choice applies to the next match, no reload needed. LOW keeps full HD resolution and antialiasing, but uses emissive-only night lamps (2 real point lights), no plane smoke, fewer trail particles, slightly closer fog. Sound: announcer voice for your kill announcements, a cartoonish "aaaakkhhh" groan when you die, master 🔊/🔇 toggle in **INFO → Sound** (saved in this browser).
 
 ## Run locally
 
